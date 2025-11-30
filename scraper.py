@@ -167,66 +167,76 @@ def create_pdf(frames_dir, output_pdf, orientation="portrait", page_breaks=None)
         section_start = section_starts[section_idx]
         section_end = section_ends[section_idx]
 
-        # Calculate section stats for better distribution
+        # Calculate section stats
         section_images = images[section_start:section_end]
-        total_section_height = sum(img[2] * margin_scale for img in section_images)
+
+        # Pre-calculate scaled dimensions for all images in this section
+        scaled_section_images = []
+        for img_path, img_width, img_height in section_images:
+            scaled_width = img_width * margin_scale
+            scaled_height = img_height * margin_scale
+
+            max_width = page_width * 0.9
+            if scaled_width > max_width:
+                scale_factor = max_width / scaled_width
+                scaled_width = max_width
+                scaled_height = scaled_height * scale_factor
+
+            scaled_section_images.append((img_path, scaled_width, scaled_height))
+
+        total_section_height = sum(h for _, _, h in scaled_section_images) + (len(scaled_section_images) - 1) * spacing
         available_height = page_height * 0.9
         estimated_pages = max(1, int(np.ceil(total_section_height / available_height)))
         target_height_per_page = total_section_height / estimated_pages
 
-        print(f"Section {section_idx + 1}: frames {section_start}-{section_end}, ~{estimated_pages} pages")
+        print(f"Section {section_idx + 1}: frames {section_start}-{section_end-1}, {estimated_pages} pages, target {target_height_per_page:.0f}px per page")
 
-        i = section_start
-        while i < section_end:
-            page_images = []
-            current_height = 0
+        # Find optimal break points to evenly distribute content
+        break_points = [0]  # Start of section
+        current_page_height = 0
 
-            while i < section_end:
-                img_path, img_width, img_height = images[i]
+        for idx, (img_path, img_width, img_height) in enumerate(scaled_section_images):
+            needed_height = img_height
+            if current_page_height > 0:
+                needed_height += spacing
 
-                scaled_width = img_width * margin_scale
-                scaled_height = img_height * margin_scale
+            # Check if adding this would put us significantly over target
+            if current_page_height > 0 and current_page_height + needed_height > target_height_per_page:
+                # Calculate how close we are to target with and without this image
+                distance_without = abs(current_page_height - target_height_per_page)
+                distance_with = abs(current_page_height + needed_height - target_height_per_page)
 
-                max_width = page_width * 0.9
-                if scaled_width > max_width:
-                    scale_factor = max_width / scaled_width
-                    scaled_width = max_width
-                    scaled_height = scaled_height * scale_factor
+                # Only break if it's closer to target without this image
+                # AND we're not creating a tiny last page
+                frames_remaining = len(scaled_section_images) - idx
+                if frames_remaining > 0:
+                    remaining_height = sum(h for _, _, h in scaled_section_images[idx:]) + (frames_remaining - 1) * spacing
 
-                needed_height = scaled_height
-                if page_images:
-                    needed_height += spacing
+                    # Break here if it's closer to target and won't leave a tiny last page
+                    if distance_without < distance_with and remaining_height > target_height_per_page * 0.5:
+                        break_points.append(idx)
+                        current_page_height = needed_height
+                        continue
 
-                # Check if we should break here for better distribution
-                would_exceed = current_height + needed_height > page_height * 0.9
-                frames_remaining = section_end - i - 1
+            current_page_height += needed_height
 
-                # If adding this would exceed, always break
-                if would_exceed:
-                    break
+        # Render pages based on break points
+        for page_idx in range(len(break_points)):
+            start_idx = break_points[page_idx]
+            end_idx = break_points[page_idx + 1] if page_idx + 1 < len(break_points) else len(scaled_section_images)
 
-                # Smart distribution: if we're getting close to target and there are more frames,
-                # consider breaking to balance pages better
-                if (current_height > target_height_per_page * 0.7 and
-                    frames_remaining > 0 and
-                    current_height + needed_height > target_height_per_page):
-                    # Only break if there's enough content left for another decent page
-                    remaining_height = sum(images[j][2] * margin_scale for j in range(i, section_end))
-                    if remaining_height > available_height * 0.3:
-                        break
-
-                page_images.append((img_path, scaled_width, scaled_height))
-                current_height += needed_height
-                i += 1
+            page_images = scaled_section_images[start_idx:end_idx]
 
             if not page_images:
-                i += 1
                 continue
 
-            page_num += 1
-            print(f"Creating page {page_num}...")
+            # Calculate total height for this page
+            total_page_height = sum(h for _, _, h in page_images) + (len(page_images) - 1) * spacing
 
-            y_offset = (page_height - current_height) / 2
+            page_num += 1
+            print(f"Creating page {page_num} with {len(page_images)} frames ({total_page_height:.0f}px)...")
+
+            y_offset = (page_height - total_page_height) / 2
 
             for img_path, img_width, img_height in page_images:
                 x_offset = (page_width - img_width) / 2

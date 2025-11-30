@@ -42,14 +42,30 @@ app.on('activate', () => {
 // IPC handlers
 ipcMain.handle('load-frames', async () => {
   const framesDir = path.join(process.cwd(), 'frames');
+  const metadataPath = path.join(framesDir, '.metadata.json');
+
   try {
     const files = fs.readdirSync(framesDir)
       .filter(f => f.endsWith('.png'))
       .sort()
       .map(f => ({
         name: f,
-        path: path.join(framesDir, f)
+        path: path.join(framesDir, f),
+        pageBreak: false
       }));
+
+    // Load page breaks from metadata if it exists
+    if (fs.existsSync(metadataPath)) {
+      const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+      if (metadata.pageBreaks) {
+        metadata.pageBreaks.forEach(idx => {
+          if (files[idx]) {
+            files[idx].pageBreak = true;
+          }
+        });
+      }
+    }
+
     return files;
   } catch (err) {
     return [];
@@ -59,6 +75,7 @@ ipcMain.handle('load-frames', async () => {
 ipcMain.handle('save-frames', async (event, frames) => {
   const framesDir = path.join(process.cwd(), 'frames');
   const tempDir = path.join(framesDir, 'temp_rename');
+  const metadataPath = path.join(framesDir, '.metadata.json');
 
   console.log('Starting save operation with', frames.length, 'frames');
 
@@ -100,14 +117,17 @@ ipcMain.handle('save-frames', async (event, frames) => {
     console.log('Removing temp directory...');
     fs.rmdirSync(tempDir);
 
+    // Extract page break indices and save metadata
+    const pageBreaks = frames
+      .map((frame, idx) => frame.pageBreak ? idx : null)
+      .filter(idx => idx !== null);
+
+    console.log('Saving metadata with page breaks:', pageBreaks);
+    fs.writeFileSync(metadataPath, JSON.stringify({ pageBreaks }, null, 2));
+
     // Generate PDF using Python
     console.log('Generating PDF...');
     return new Promise((resolve, reject) => {
-      // Extract page break indices
-      const pageBreaks = frames
-        .map((frame, idx) => frame.pageBreak ? idx : null)
-        .filter(idx => idx !== null);
-
       const pageBreaksStr = JSON.stringify(pageBreaks);
       const pythonCode = `from scraper import create_pdf; import json; page_breaks = json.loads('${pageBreaksStr}'); create_pdf('frames', 'output.pdf', 'portrait', page_breaks); print('PDF created successfully')`;
       console.log('Spawning Python process with page breaks:', pageBreaks);
