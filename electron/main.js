@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { PythonShell } = require('python-shell');
+const { spawn } = require('child_process');
 
 let mainWindow;
 
@@ -95,21 +95,33 @@ ipcMain.handle('save-frames', async (event, frames) => {
 
     // Generate PDF using Python
     return new Promise((resolve, reject) => {
-      const options = {
-        mode: 'text',
-        pythonPath: 'uv',
-        pythonOptions: ['-S'],
-        scriptPath: process.cwd(),
-        args: ['run', 'python', '-c', `
-from scraper import create_pdf
-create_pdf('frames', 'output.pdf', 'portrait')
-print('PDF created successfully')
-`]
-      };
+      const pythonCode = `from scraper import create_pdf; create_pdf('frames', 'output.pdf', 'portrait'); print('PDF created successfully')`;
+      const child = spawn('uv', ['run', 'python', '-c', pythonCode], {
+        cwd: process.cwd(),
+        stdio: 'pipe'
+      });
 
-      PythonShell.run('', options, (err, results) => {
-        if (err) reject(err);
-        else resolve({ success: true, message: `PDF created with ${frames.length} frames` });
+      let output = '';
+      let errorOutput = '';
+
+      child.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+
+      child.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve({ success: true, message: `PDF created with ${frames.length} frames` });
+        } else {
+          reject(new Error(`Python script failed: ${errorOutput}`));
+        }
+      });
+
+      child.on('error', (err) => {
+        reject(err);
       });
     });
   } catch (err) {
