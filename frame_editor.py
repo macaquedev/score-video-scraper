@@ -293,7 +293,7 @@ class FrameEditor:
         self.load_thumbnails()
 
     def save_and_exit(self):
-        if messagebox.askyesno("Save Changes", "Save changes and rename files?"):
+        if messagebox.askyesno("Save Changes", "Save changes and create PDF?"):
             temp_dir = self.frames_dir / "temp_rename"
             temp_dir.mkdir(exist_ok=True)
 
@@ -309,7 +309,11 @@ class FrameEditor:
 
             temp_dir.rmdir()
 
-            messagebox.showinfo("Success", "Changes saved successfully!")
+            # Generate PDF
+            from scraper import create_pdf
+            create_pdf(str(self.frames_dir), "output.pdf", "portrait")
+
+            messagebox.showinfo("Success", f"Changes saved and PDF created!\nSaved {len(self.frames)} frames to output.pdf")
             self.root.quit()
 
     def run(self):
