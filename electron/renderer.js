@@ -6,7 +6,20 @@ let lastClicked = null;
 document.addEventListener('DOMContentLoaded', async () => {
   await loadFrames();
   setupEventListeners();
+  setupProgressListener();
 });
+
+function setupProgressListener() {
+  window.electronAPI.onPdfProgress((message) => {
+    const messageEl = document.getElementById('loading-message');
+    const detailEl = document.getElementById('loading-detail');
+
+    if (messageEl && detailEl) {
+      // Update the detail text with the latest progress
+      detailEl.textContent = message;
+    }
+  });
+}
 
 async function loadFrames() {
   try {

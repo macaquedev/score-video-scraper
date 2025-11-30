@@ -115,9 +115,14 @@ ipcMain.handle('save-frames', async (event, frames) => {
       let errorOutput = '';
 
       child.stdout.on('data', (data) => {
-        const str = data.toString();
+        const str = data.toString().trim();
         console.log('Python stdout:', str);
         output += str;
+
+        // Send progress to renderer
+        if (mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send('pdf-progress', str);
+        }
       });
 
       child.stderr.on('data', (data) => {
