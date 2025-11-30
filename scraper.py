@@ -157,56 +157,87 @@ def create_pdf(frames_dir, output_pdf, orientation="portrait", page_breaks=None)
     print("Generating PDF pages...")
     i = 0
     page_num = 0
-    while i < len(images):
-        page_images = []
-        current_height = 0
 
-        while i < len(images):
-            img_path, img_width, img_height = images[i]
+    # Get manual page break boundaries
+    manual_breaks = sorted(list(page_break_set))
+    section_starts = [0] + [b + 1 for b in manual_breaks]
+    section_ends = manual_breaks + [len(images)]
 
-            scaled_width = img_width * margin_scale
-            scaled_height = img_height * margin_scale
+    for section_idx in range(len(section_starts)):
+        section_start = section_starts[section_idx]
+        section_end = section_ends[section_idx]
 
-            max_width = page_width * 0.9
-            if scaled_width > max_width:
-                scale_factor = max_width / scaled_width
-                scaled_width = max_width
-                scaled_height = scaled_height * scale_factor
+        # Calculate section stats for better distribution
+        section_images = images[section_start:section_end]
+        total_section_height = sum(img[2] * margin_scale for img in section_images)
+        available_height = page_height * 0.9
+        estimated_pages = max(1, int(np.ceil(total_section_height / available_height)))
+        target_height_per_page = total_section_height / estimated_pages
 
-            needed_height = scaled_height
-            if page_images:
-                needed_height += spacing
+        print(f"Section {section_idx + 1}: frames {section_start}-{section_end}, ~{estimated_pages} pages")
 
-            if current_height + needed_height > page_height * 0.9:
-                break
+        i = section_start
+        while i < section_end:
+            page_images = []
+            current_height = 0
 
-            page_images.append((img_path, scaled_width, scaled_height))
-            current_height += needed_height
-            i += 1
+            while i < section_end:
+                img_path, img_width, img_height = images[i]
 
-            # Force new page if this frame has a page break marker
-            if i - 1 in page_break_set:
-                break
+                scaled_width = img_width * margin_scale
+                scaled_height = img_height * margin_scale
 
-        if not page_images:
-            i += 1
-            continue
+                max_width = page_width * 0.9
+                if scaled_width > max_width:
+                    scale_factor = max_width / scaled_width
+                    scaled_width = max_width
+                    scaled_height = scaled_height * scale_factor
 
-        page_num += 1
-        print(f"Creating page {page_num}...")
+                needed_height = scaled_height
+                if page_images:
+                    needed_height += spacing
 
-        y_offset = (page_height - current_height) / 2
+                # Check if we should break here for better distribution
+                would_exceed = current_height + needed_height > page_height * 0.9
+                frames_remaining = section_end - i - 1
 
-        for img_path, img_width, img_height in page_images:
-            x_offset = (page_width - img_width) / 2
-            y_position = page_height - y_offset - img_height
+                # If adding this would exceed, always break
+                if would_exceed:
+                    break
 
-            c.drawImage(str(img_path), x_offset, y_position,
-                       width=img_width, height=img_height)
+                # Smart distribution: if we're getting close to target and there are more frames,
+                # consider breaking to balance pages better
+                if (current_height > target_height_per_page * 0.7 and
+                    frames_remaining > 0 and
+                    current_height + needed_height > target_height_per_page):
+                    # Only break if there's enough content left for another decent page
+                    remaining_height = sum(images[j][2] * margin_scale for j in range(i, section_end))
+                    if remaining_height > available_height * 0.3:
+                        break
 
-            y_offset += img_height + spacing
+                page_images.append((img_path, scaled_width, scaled_height))
+                current_height += needed_height
+                i += 1
 
-        c.showPage()
+            if not page_images:
+                i += 1
+                continue
+
+            page_num += 1
+            print(f"Creating page {page_num}...")
+
+            y_offset = (page_height - current_height) / 2
+
+            for img_path, img_width, img_height in page_images:
+                x_offset = (page_width - img_width) / 2
+                y_position = page_height - y_offset - img_height
+
+                c.drawImage(str(img_path), x_offset, y_position,
+                           width=img_width, height=img_height)
+
+                y_offset += img_height + spacing
+
+            c.showPage()
 
     print("Saving PDF...")
     c.save()
