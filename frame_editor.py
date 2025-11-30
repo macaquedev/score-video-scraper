@@ -13,6 +13,7 @@ class FrameEditor:
         self.frames = sorted(self.frames_dir.glob("*.png"))
         self.thumbnails = []
         self.selected_indices = set()
+        self.last_clicked = None
 
         self.root = tk.Tk()
         self.root.title("Frame Editor")
@@ -77,8 +78,17 @@ class FrameEditor:
             label.bind("<Button-1>", lambda e, i=idx: self.select_frame(i, e))
 
     def select_frame(self, index, event=None):
+        # Check if Shift is pressed for range select
+        if event and (event.state & 0x1):  # Shift key
+            if self.last_clicked is not None:
+                # Select range from last_clicked to index
+                start = min(self.last_clicked, index)
+                end = max(self.last_clicked, index)
+                self.selected_indices = set(range(start, end + 1))
+            else:
+                self.selected_indices = {index}
         # Check if Ctrl is pressed for multi-select
-        if event and (event.state & 0x4):  # Ctrl key
+        elif event and (event.state & 0x4):  # Ctrl key
             if index in self.selected_indices:
                 self.selected_indices.remove(index)
             else:
@@ -86,6 +96,8 @@ class FrameEditor:
         else:
             # Single select - clear previous selection
             self.selected_indices = {index}
+
+        self.last_clicked = index
 
         # Update visual highlighting
         for i, frame in enumerate(self.frame_container.winfo_children()):
@@ -127,28 +139,12 @@ class FrameEditor:
         # Delete in reverse order to maintain indices
         for idx in sorted(self.selected_indices, reverse=True):
             self.frames.pop(idx)
-            widgets = self.frame_container.winfo_children()
-            widgets[idx].destroy()
-            self.thumbnails.pop(idx)
 
         self.selected_indices.clear()
+        self.last_clicked = None
 
-        # Update frame numbers and rebind events
-        widgets = self.frame_container.winfo_children()
-        for i, widget in enumerate(widgets):
-            # Update frame number label
-            for child in widget.winfo_children():
-                if isinstance(child, tk.Frame):
-                    for label in child.winfo_children():
-                        if isinstance(label, tk.Label) and "Frame" in label.cget("text"):
-                            label.config(text=f"Frame {i}")
-
-            # Rebind click events with correct index
-            widget.bind("<Button-1>", lambda e, idx=i: self.select_frame(idx, e))
-            # Also rebind the image label
-            for child in widget.winfo_children():
-                if isinstance(child, tk.Label) and hasattr(child, 'image'):
-                    child.bind("<Button-1>", lambda e, idx=i: self.select_frame(idx, e))
+        # Reload thumbnails to ensure correct bindings
+        self.load_thumbnails()
             
     def save_and_exit(self):
         if messagebox.askyesno("Save Changes", "Save changes and rename files?"):
