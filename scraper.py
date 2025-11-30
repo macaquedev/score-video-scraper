@@ -130,6 +130,8 @@ def create_pdf(frames_dir, output_pdf, orientation="portrait"):
         print(f"No images found in {frames_dir}")
         return
 
+    print(f"Creating PDF with {len(image_files)} frames...")
+
     if orientation == "portrait":
         page_width, page_height = A4
     else:
@@ -140,14 +142,24 @@ def create_pdf(frames_dir, output_pdf, orientation="portrait"):
 
     c = canvas.Canvas(output_pdf, pagesize=(page_width, page_height))
 
+    # Pre-load all images to avoid re-opening them
+    print("Loading images...")
+    images = []
+    for idx, img_path in enumerate(image_files):
+        if idx % 10 == 0:
+            print(f"Loading image {idx + 1}/{len(image_files)}...")
+        img = Image.open(img_path)
+        images.append((img_path, img.size[0], img.size[1]))
+
+    print("Generating PDF pages...")
     i = 0
-    while i < len(image_files):
+    page_num = 0
+    while i < len(images):
         page_images = []
         current_height = 0
 
-        while i < len(image_files):
-            img = Image.open(image_files[i])
-            img_width, img_height = img.size
+        while i < len(images):
+            img_path, img_width, img_height = images[i]
 
             scaled_width = img_width * margin_scale
             scaled_height = img_height * margin_scale
@@ -165,7 +177,7 @@ def create_pdf(frames_dir, output_pdf, orientation="portrait"):
             if current_height + needed_height > page_height * 0.9:
                 break
 
-            page_images.append((image_files[i], scaled_width, scaled_height))
+            page_images.append((img_path, scaled_width, scaled_height))
             current_height += needed_height
             i += 1
 
@@ -173,11 +185,13 @@ def create_pdf(frames_dir, output_pdf, orientation="portrait"):
             i += 1
             continue
 
+        page_num += 1
+        print(f"Creating page {page_num}...")
+
         y_offset = (page_height - current_height) / 2
 
         for img_path, img_width, img_height in page_images:
             x_offset = (page_width - img_width) / 2
-
             y_position = page_height - y_offset - img_height
 
             c.drawImage(str(img_path), x_offset, y_position,
@@ -187,6 +201,7 @@ def create_pdf(frames_dir, output_pdf, orientation="portrait"):
 
         c.showPage()
 
+    print("Saving PDF...")
     c.save()
     print(f"PDF created: {output_pdf}")
 
