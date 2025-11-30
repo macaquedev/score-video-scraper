@@ -40,6 +40,9 @@ function renderFrames() {
     card.className = 'frame-card bg-slate-800 rounded-xl p-6 border-2 border-slate-700 cursor-pointer';
     card.dataset.index = index;
 
+    const pageBreakBadge = frame.pageBreak ?
+      '<span class="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-xs font-medium">📄 Page Break After</span>' : '';
+
     card.innerHTML = `
       <div class="flex items-start gap-6">
         <div class="flex-shrink-0">
@@ -52,6 +55,7 @@ function renderFrames() {
             <span class="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-xs font-medium">
               Index: ${index}
             </span>
+            ${pageBreakBadge}
           </div>
         </div>
       </div>
@@ -59,6 +63,18 @@ function renderFrames() {
 
     card.addEventListener('click', (e) => handleFrameClick(index, e));
     container.appendChild(card);
+
+    // Add page break divider if this frame has one
+    if (frame.pageBreak) {
+      const divider = document.createElement('div');
+      divider.className = 'flex items-center gap-4 my-2';
+      divider.innerHTML = `
+        <div class="flex-1 h-px bg-gradient-to-r from-transparent via-purple-500 to-transparent"></div>
+        <span class="text-purple-400 text-sm font-medium">📄 PAGE BREAK</span>
+        <div class="flex-1 h-px bg-gradient-to-r from-purple-500 via-purple-500 to-transparent"></div>
+      `;
+      container.appendChild(divider);
+    }
   });
 
   updateSelection();
@@ -163,6 +179,18 @@ function setupEventListeners() {
     } finally {
       showLoading(false);
     }
+  });
+
+  // Toggle Page Break
+  document.getElementById('page-break-btn').addEventListener('click', () => {
+    if (selectedIndices.size === 0) return;
+
+    // Toggle page break for all selected frames
+    selectedIndices.forEach(index => {
+      frames[index].pageBreak = !frames[index].pageBreak;
+    });
+
+    renderFrames();
   });
 
   // Save & Create PDF

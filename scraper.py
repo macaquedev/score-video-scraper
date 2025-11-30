@@ -122,7 +122,7 @@ def extract_unique_frames(video_path, output_dir, threshold=0.95, sample_interva
     print(f"\nDone! Saved {saved_count} unique frames out of {frame_count - start_frame} processed frames")
 
 
-def create_pdf(frames_dir, output_pdf, orientation="portrait"):
+def create_pdf(frames_dir, output_pdf, orientation="portrait", page_breaks=None):
     frames_path = Path(frames_dir)
     image_files = sorted(frames_path.glob("*.png"))
 
@@ -131,6 +131,9 @@ def create_pdf(frames_dir, output_pdf, orientation="portrait"):
         return
 
     print(f"Creating PDF with {len(image_files)} frames...")
+
+    # Convert page_breaks to a set of indices for quick lookup
+    page_break_set = set(page_breaks) if page_breaks else set()
 
     if orientation == "portrait":
         page_width, page_height = A4
@@ -180,6 +183,10 @@ def create_pdf(frames_dir, output_pdf, orientation="portrait"):
             page_images.append((img_path, scaled_width, scaled_height))
             current_height += needed_height
             i += 1
+
+            # Force new page if this frame has a page break marker
+            if i - 1 in page_break_set:
+                break
 
         if not page_images:
             i += 1

@@ -103,8 +103,14 @@ ipcMain.handle('save-frames', async (event, frames) => {
     // Generate PDF using Python
     console.log('Generating PDF...');
     return new Promise((resolve, reject) => {
-      const pythonCode = `from scraper import create_pdf; create_pdf('frames', 'output.pdf', 'portrait'); print('PDF created successfully')`;
-      console.log('Spawning Python process:', 'uv run python -u -c', pythonCode.substring(0, 50) + '...');
+      // Extract page break indices
+      const pageBreaks = frames
+        .map((frame, idx) => frame.pageBreak ? idx : null)
+        .filter(idx => idx !== null);
+
+      const pageBreaksStr = JSON.stringify(pageBreaks);
+      const pythonCode = `from scraper import create_pdf; import json; page_breaks = json.loads('${pageBreaksStr}'); create_pdf('frames', 'output.pdf', 'portrait', page_breaks); print('PDF created successfully')`;
+      console.log('Spawning Python process with page breaks:', pageBreaks);
 
       const child = spawn('uv', ['run', 'python', '-u', '-c', pythonCode], {
         cwd: process.cwd(),
