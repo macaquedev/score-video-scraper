@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-import tkinter as tk
-from tkinter import ttk, messagebox
+import customtkinter as ctk
+from tkinter import messagebox, Canvas, Scrollbar
 from PIL import Image, ImageTk
 from pathlib import Path
 import shutil
 import os
+
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
 
 
 class FrameEditor:
@@ -15,9 +18,9 @@ class FrameEditor:
         self.selected_indices = set()
         self.last_clicked = None
 
-        self.root = tk.Tk()
+        self.root = ctk.CTk()
         self.root.title("Frame Editor")
-        self.root.geometry("1200x800")
+        self.root.geometry("1400x900")
 
         self.setup_ui()
         self.load_thumbnails()
@@ -29,65 +32,143 @@ class FrameEditor:
         self.root.bind("<Delete>", lambda e: self.delete_frame())
 
     def setup_ui(self):
-        toolbar = tk.Frame(self.root)
-        toolbar.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
-        
-        tk.Button(toolbar, text="Move Up", command=self.move_up).pack(side=tk.LEFT, padx=2)
-        tk.Button(toolbar, text="Move Down", command=self.move_down).pack(side=tk.LEFT, padx=2)
-        tk.Button(toolbar, text="Delete", command=self.delete_frame, fg="red").pack(side=tk.LEFT, padx=2)
-        tk.Button(toolbar, text="Save & Exit", command=self.save_and_exit, bg="green", fg="white").pack(side=tk.RIGHT, padx=2)
-        
-        canvas_frame = tk.Frame(self.root)
-        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        self.canvas = tk.Canvas(canvas_frame, bg="white")
-        scrollbar = tk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self.canvas.yview)
+        # Toolbar
+        toolbar = ctk.CTkFrame(self.root)
+        toolbar.pack(side="top", fill="x", padx=10, pady=10)
+
+        ctk.CTkButton(
+            toolbar,
+            text="↑ Move Up",
+            command=self.move_up,
+            width=120,
+            height=35
+        ).pack(side="left", padx=5)
+
+        ctk.CTkButton(
+            toolbar,
+            text="↓ Move Down",
+            command=self.move_down,
+            width=120,
+            height=35
+        ).pack(side="left", padx=5)
+
+        ctk.CTkButton(
+            toolbar,
+            text="🗑 Delete",
+            command=self.delete_frame,
+            fg_color="#e74c3c",
+            hover_color="#c0392b",
+            width=120,
+            height=35
+        ).pack(side="left", padx=5)
+
+        ctk.CTkButton(
+            toolbar,
+            text="💾 Save & Exit",
+            command=self.save_and_exit,
+            fg_color="#27ae60",
+            hover_color="#229954",
+            width=140,
+            height=35
+        ).pack(side="right", padx=5)
+
+        # Info label
+        self.info_label = ctk.CTkLabel(
+            toolbar,
+            text=f"Total frames: {len(self.frames)}",
+            font=("Arial", 14)
+        )
+        self.info_label.pack(side="left", padx=20)
+
+        # Canvas frame with modern scrollbar
+        canvas_frame = ctk.CTkFrame(self.root, fg_color="transparent")
+        canvas_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        self.canvas = Canvas(canvas_frame, bg="#1e1e1e", highlightthickness=0)
+        scrollbar = ctk.CTkScrollbar(canvas_frame, command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=scrollbar.set)
-        
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        self.frame_container = tk.Frame(self.canvas, bg="white")
-        self.canvas_window = self.canvas.create_window((0, 0), window=self.frame_container, anchor=tk.NW)
-        
+
+        scrollbar.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
+
+        self.frame_container = ctk.CTkFrame(self.canvas, fg_color="transparent")
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.frame_container, anchor="nw")
+
         self.frame_container.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.bind("<Configure>", self.on_canvas_configure)
-        
+
     def on_canvas_configure(self, event):
         self.canvas.itemconfig(self.canvas_window, width=event.width)
-        
+
     def load_thumbnails(self):
         for widget in self.frame_container.winfo_children():
             widget.destroy()
-        
+
         self.thumbnails = []
-        
+
         for idx, frame_path in enumerate(self.frames):
             img = Image.open(frame_path)
-            img.thumbnail((300, 300))
+            img.thumbnail((350, 350))
             photo = ImageTk.PhotoImage(img)
             self.thumbnails.append(photo)
-            
-            frame = tk.Frame(self.frame_container, relief=tk.RAISED, borderwidth=2, bg="lightgray")
-            frame.pack(fill=tk.X, padx=5, pady=5)
-            
-            label = tk.Label(frame, image=photo, bg="white")
-            label.pack(side=tk.LEFT, padx=5, pady=5)
-            
-            info_frame = tk.Frame(frame, bg="lightgray")
-            info_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
-            
-            tk.Label(info_frame, text=f"Frame {idx}", font=("Arial", 12, "bold"), bg="lightgray").pack(anchor=tk.W)
-            tk.Label(info_frame, text=frame_path.name, bg="lightgray").pack(anchor=tk.W)
-            
-            frame.bind("<Button-1>", lambda e, i=idx: self.select_frame(i, e))
-            label.bind("<Button-1>", lambda e, i=idx: self.select_frame(i, e))
+
+            # Modern frame card
+            frame_card = ctk.CTkFrame(
+                self.frame_container,
+                corner_radius=10,
+                fg_color="#2b2b2b",
+                border_width=2,
+                border_color="#3b3b3b"
+            )
+            frame_card.pack(fill="x", padx=15, pady=8)
+
+            # Image container
+            img_container = ctk.CTkFrame(frame_card, fg_color="transparent")
+            img_container.pack(side="left", padx=15, pady=15)
+
+            img_label = ctk.CTkLabel(img_container, image=photo, text="")
+            img_label.pack()
+
+            # Info container
+            info_container = ctk.CTkFrame(frame_card, fg_color="transparent")
+            info_container.pack(side="left", fill="both", expand=True, padx=15, pady=15)
+
+            title_label = ctk.CTkLabel(
+                info_container,
+                text=f"Frame {idx}",
+                font=("Arial", 18, "bold"),
+                anchor="w"
+            )
+            title_label.pack(anchor="w", pady=(0, 5))
+
+            filename_label = ctk.CTkLabel(
+                info_container,
+                text=frame_path.name,
+                font=("Arial", 12),
+                text_color="#888888",
+                anchor="w"
+            )
+            filename_label.pack(anchor="w")
+
+            # Bind clicks
+            frame_card.bind("<Button-1>", lambda e, i=idx: self.select_frame(i, e))
+            img_label.bind("<Button-1>", lambda e, i=idx: self.select_frame(i, e))
+            title_label.bind("<Button-1>", lambda e, i=idx: self.select_frame(i, e))
+            filename_label.bind("<Button-1>", lambda e, i=idx: self.select_frame(i, e))
+
+        self.update_info_label()
+
+    def update_info_label(self):
+        selected_count = len(self.selected_indices)
+        if selected_count > 0:
+            self.info_label.configure(text=f"Total: {len(self.frames)} | Selected: {selected_count}")
+        else:
+            self.info_label.configure(text=f"Total frames: {len(self.frames)}")
 
     def select_frame(self, index, event=None):
         # Check if Shift is pressed for range select
         if event and (event.state & 0x1):  # Shift key
             if self.last_clicked is not None:
-                # Select range from last_clicked to index
                 start = min(self.last_clicked, index)
                 end = max(self.last_clicked, index)
                 self.selected_indices = set(range(start, end + 1))
@@ -100,7 +181,7 @@ class FrameEditor:
             else:
                 self.selected_indices.add(index)
         else:
-            # Single select - clear previous selection
+            # Single select
             self.selected_indices = {index}
 
         self.last_clicked = index
@@ -108,24 +189,23 @@ class FrameEditor:
         # Update visual highlighting
         for i, frame in enumerate(self.frame_container.winfo_children()):
             if i in self.selected_indices:
-                frame.configure(bg="blue", highlightbackground="blue", highlightthickness=3)
+                frame.configure(border_color="#3498db", border_width=3, fg_color="#2c3e50")
             else:
-                frame.configure(bg="lightgray", highlightthickness=0)
+                frame.configure(border_color="#3b3b3b", border_width=2, fg_color="#2b2b2b")
+
+        self.update_info_label()
 
     def navigate_up(self, event):
         if not self.frames:
             return
 
         if not self.selected_indices:
-            # No selection, start at the end
             target = len(self.frames) - 1
         else:
-            # Move from the minimum selected index
             target = min(self.selected_indices) - 1
             if target < 0:
                 return
 
-        # Check for Shift key for range selection
         if event.state & 0x1 and self.last_clicked is not None:
             start = min(self.last_clicked, target)
             end = max(self.last_clicked, target)
@@ -142,15 +222,12 @@ class FrameEditor:
             return
 
         if not self.selected_indices:
-            # No selection, start at the beginning
             target = 0
         else:
-            # Move from the maximum selected index
             target = max(self.selected_indices) + 1
             if target >= len(self.frames):
                 return
 
-        # Check for Shift key for range selection
         if event.state & 0x1 and self.last_clicked is not None:
             start = min(self.last_clicked, target)
             end = max(self.last_clicked, target)
@@ -173,7 +250,6 @@ class FrameEditor:
                 widget_height = widget.winfo_height()
                 canvas_height = self.canvas.winfo_height()
 
-                # Calculate scroll position to center the widget
                 scroll_pos = (widget_y - canvas_height / 2 + widget_height / 2) / bbox[3]
                 scroll_pos = max(0, min(1, scroll_pos))
                 self.canvas.yview_moveto(scroll_pos)
@@ -203,41 +279,39 @@ class FrameEditor:
         self.selected_indices = {idx + 1}
         self.load_thumbnails()
         self.select_frame(idx + 1)
-        
+
     def delete_frame(self):
         if not self.selected_indices:
             return
 
-        # Delete in reverse order to maintain indices
+        # Delete in reverse order
         for idx in sorted(self.selected_indices, reverse=True):
             self.frames.pop(idx)
 
         self.selected_indices.clear()
         self.last_clicked = None
-
-        # Reload thumbnails to ensure correct bindings
         self.load_thumbnails()
-            
+
     def save_and_exit(self):
         if messagebox.askyesno("Save Changes", "Save changes and rename files?"):
             temp_dir = self.frames_dir / "temp_rename"
             temp_dir.mkdir(exist_ok=True)
-            
+
             for idx, frame_path in enumerate(self.frames):
                 new_name = f"frame_{idx:06d}.png"
                 shutil.copy2(frame_path, temp_dir / new_name)
-            
+
             for file in self.frames_dir.glob("frame_*.png"):
                 file.unlink()
-            
+
             for file in temp_dir.glob("*.png"):
                 shutil.move(file, self.frames_dir / file.name)
-            
+
             temp_dir.rmdir()
-            
+
             messagebox.showinfo("Success", "Changes saved successfully!")
             self.root.quit()
-        
+
     def run(self):
         self.root.mainloop()
 
