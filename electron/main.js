@@ -104,9 +104,9 @@ ipcMain.handle('save-frames', async (event, frames) => {
     console.log('Generating PDF...');
     return new Promise((resolve, reject) => {
       const pythonCode = `from scraper import create_pdf; create_pdf('frames', 'output.pdf', 'portrait'); print('PDF created successfully')`;
-      console.log('Spawning Python process:', 'uv run python -c', pythonCode.substring(0, 50) + '...');
+      console.log('Spawning Python process:', 'uv run python -u -c', pythonCode.substring(0, 50) + '...');
 
-      const child = spawn('uv', ['run', 'python', '-c', pythonCode], {
+      const child = spawn('uv', ['run', 'python', '-u', '-c', pythonCode], {
         cwd: process.cwd(),
         stdio: 'pipe'
       });
