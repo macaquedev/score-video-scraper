@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import sys
+import cv2
+import numpy as np
+import yt_dlp
+from pathlib import Path
+from skimage.metrics import structural_similarity as ssim
+from PIL import Image
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+
+
+def download_video(url, output_path="video.mp4"):
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': output_path,
+        'quiet': False,
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+
+    return output_path
+
+
+def crop_black_borders(image, threshold=30):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    _, thresh = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
+
+    coords = cv2.findNonZero(thresh)
+
+    if coords is None:
+        return image
+
+    x, y, w, h = cv2.boundingRect(coords)
+
+    cropped = image[y:y+h, x:x+w]
+
+    return cropped
+
+
+def frames_are_identical(frame1, frame2, threshold=0.95):
+    if frame1.shape != frame2.shape:
+        return False
+
+    gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+
+    height, width = gray1.shape
+    scale = min(1.0, 480 / height)
+    if scale < 1.0:
+        new_height = int(height * scale)
+        new_width = int(width * scale)
+        gray1 = cv2.resize(gray1, (new_width, new_height))
+        gray2 = cv2.resize(gray2, (new_width, new_height))
+
+    similarity = ssim(gray1, gray2)
+
+    return similarity > threshold
+
+
+def extract_unique_frames(video_path, output_dir, threshold=0.95, sample_interval=None):
+    os.makedirs(output_dir, exist_ok=True)
+
+    cap = cv2.VideoCapture(video_path)
+
+    if not cap.isOpened():
+        print(f"Error: Could not open video file {video_path}")
+        return
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    if sample_interval is not None:
+        skip_frames = int(fps * sample_interval)
+        print(f"Sampling every {sample_interval} seconds ({skip_frames} frames at {fps:.2f} FPS)")
+    else:
+        skip_frames = 1
+        print(f"Processing every frame at {fps:.2f} FPS")
+
+    frame_count = 0
+    saved_count = 0
+    prev_frame = None
+
+    print(f"Processing {total_frames} frames...")
+
+    while True:
+        ret, frame = cap.read()
+
+        if not ret:
+            break
+
+        frame_count += 1
+
+        if frame_count % skip_frames != 0:
+            continue
+
+        if prev_frame is None or not frames_are_identical(prev_frame, frame, threshold):
+            cropped_frame = crop_black_borders(frame)
+            output_path = os.path.join(output_dir, f"frame_{saved_count:06d}.png")
+            cv2.imwrite(output_path, cropped_frame)
+            saved_count += 1
+            prev_frame = frame.copy()
+
+        if frame_count % (100 * skip_frames) == 0:
+            print(f"Processed {frame_count}/{total_frames} frames, saved {saved_count} unique frames")
+
+    cap.release()
+    print(f"\nDone! Saved {saved_count} unique frames out of {frame_count} total frames")
+
+
+def create_pdf(frames_dir, output_pdf, orientation="portrait"):
+    frames_path = Path(frames_dir)
+    image_files = sorted(frames_path.glob("*.png"))
+
+    if not image_files:
+        print(f"No images found in {frames_dir}")
+        return
+
+    if orientation == "portrait":
+        page_width, page_height = A4
+    else:
+        page_height, page_width = A4
+
+    margin_scale = 0.95
+    spacing = 10
+
+    c = canvas.Canvas(output_pdf, pagesize=(page_width, page_height))
+
+    i = 0
+    while i < len(image_files):
+        page_images = []
+        current_height = 0
+
+        while i < len(image_files):
+            img = Image.open(image_files[i])
+            img_width, img_height = img.size
+
+            scaled_width = img_width * margin_scale
+            scaled_height = img_height * margin_scale
+
+            max_width = page_width * 0.9
+            if scaled_width > max_width:
+                scale_factor = max_width / scaled_width
+                scaled_width = max_width
+                scaled_height = scaled_height * scale_factor
+
+            needed_height = scaled_height
+            if page_images:
+                needed_height += spacing
+
+            if current_height + needed_height > page_height * 0.9:
+                break
+
+            page_images.append((image_files[i], scaled_width, scaled_height))
+            current_height += needed_height
+            i += 1
+
+        if not page_images:
+            i += 1
+            continue
+
+        y_offset = (page_height - current_height) / 2
+
+        for img_path, img_width, img_height in page_images:
+            x_offset = (page_width - img_width) / 2
+
+            y_position = page_height - y_offset - img_height
+
+            c.drawImage(str(img_path), x_offset, y_position,
+                       width=img_width, height=img_height)
+
+            y_offset += img_height + spacing
+
+        c.showPage()
+
+    c.save()
+    print(f"PDF created: {output_pdf}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Download YouTube video and extract unique frames")
+    parser.add_argument("url", help="YouTube video URL")
+    parser.add_argument("-o", "--output", default="frames", help="Output directory for frames (default: frames)")
+    parser.add_argument("-v", "--video", default="video.mp4", help="Temporary video file path (default: video.mp4)")
+    parser.add_argument("--keep-video", action="store_true", help="Keep downloaded video file after extraction")
+    parser.add_argument("--threshold", type=float, default=0.95, help="SSIM similarity threshold, higher=more similar required (default: 0.95)")
+    parser.add_argument("--sample-interval", type=float, default=1.5, help="Sample interval in seconds (default: 1.5). Use 0 to process every frame")
+    parser.add_argument("--pdf", action="store_true", help="Create a PDF from extracted frames")
+    parser.add_argument("--pdf-output", default="output.pdf", help="PDF output filename (default: output.pdf)")
+    parser.add_argument("--orientation", choices=["portrait", "landscape"], default="portrait", help="PDF page orientation (default: portrait)")
+
+    args = parser.parse_args()
+
+    print(f"Downloading video from: {args.url}")
+    video_path = download_video(args.url, args.video)
+
+    sample_interval = None if args.sample_interval == 0 else args.sample_interval
+
+    print(f"\nExtracting unique frames to: {args.output}")
+    extract_unique_frames(video_path, args.output, args.threshold, sample_interval)
+
+    if args.pdf:
+        print(f"\nCreating PDF with {args.orientation} orientation...")
+        create_pdf(args.output, args.pdf_output, args.orientation)
+
+    if not args.keep_video:
+        os.remove(video_path)
+        print(f"Removed temporary video file: {video_path}")
+
+
+if __name__ == "__main__":
+    main()

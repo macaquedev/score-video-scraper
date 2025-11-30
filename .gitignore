@@ -1,0 +1,10 @@
+*.mp4
+*.pdf
+frames/
+__pycache__/
+*.pyc
+.env
+.venv
+venv/
+*.egg-info/
+.python-version
