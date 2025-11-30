@@ -62,7 +62,7 @@ def frames_are_identical(frame1, frame2, threshold=0.95):
     return similarity > threshold
 
 
-def extract_unique_frames(video_path, output_dir, threshold=0.95, sample_interval=None):
+def extract_unique_frames(video_path, output_dir, threshold=0.95, sample_interval=None, start_time=None, end_time=None):
     os.makedirs(output_dir, exist_ok=True)
 
     cap = cv2.VideoCapture(video_path)
@@ -74,6 +74,16 @@ def extract_unique_frames(video_path, output_dir, threshold=0.95, sample_interva
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+    start_frame = int(start_time * fps) if start_time is not None else 0
+    end_frame = int(end_time * fps) if end_time is not None else total_frames
+
+    if start_frame > 0:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        print(f"Starting at {start_time}s (frame {start_frame})")
+
+    if end_time is not None:
+        print(f"Ending at {end_time}s (frame {end_frame})")
+
     if sample_interval is not None:
         skip_frames = int(fps * sample_interval)
         print(f"Sampling every {sample_interval} seconds ({skip_frames} frames at {fps:.2f} FPS)")
@@ -81,13 +91,13 @@ def extract_unique_frames(video_path, output_dir, threshold=0.95, sample_interva
         skip_frames = 1
         print(f"Processing every frame at {fps:.2f} FPS")
 
-    frame_count = 0
+    frame_count = start_frame
     saved_count = 0
     prev_frame = None
 
-    print(f"Processing {total_frames} frames...")
+    print(f"Processing frames {start_frame} to {end_frame}...")
 
-    while True:
+    while frame_count < end_frame:
         ret, frame = cap.read()
 
         if not ret:
@@ -95,7 +105,7 @@ def extract_unique_frames(video_path, output_dir, threshold=0.95, sample_interva
 
         frame_count += 1
 
-        if frame_count % skip_frames != 0:
+        if (frame_count - start_frame) % skip_frames != 0:
             continue
 
         if prev_frame is None or not frames_are_identical(prev_frame, frame, threshold):
@@ -105,11 +115,11 @@ def extract_unique_frames(video_path, output_dir, threshold=0.95, sample_interva
             saved_count += 1
             prev_frame = frame.copy()
 
-        if frame_count % (100 * skip_frames) == 0:
-            print(f"Processed {frame_count}/{total_frames} frames, saved {saved_count} unique frames")
+        if (frame_count - start_frame) % (100 * skip_frames) == 0:
+            print(f"Processed {frame_count - start_frame}/{end_frame - start_frame} frames, saved {saved_count} unique frames")
 
     cap.release()
-    print(f"\nDone! Saved {saved_count} unique frames out of {frame_count} total frames")
+    print(f"\nDone! Saved {saved_count} unique frames out of {frame_count - start_frame} processed frames")
 
 
 def create_pdf(frames_dir, output_pdf, orientation="portrait"):
@@ -183,17 +193,28 @@ def create_pdf(frames_dir, output_pdf, orientation="portrait"):
 
 def main():
     parser = argparse.ArgumentParser(description="Download YouTube video and extract unique frames")
-    parser.add_argument("url", help="YouTube video URL")
+    parser.add_argument("url", nargs="?", help="YouTube video URL")
     parser.add_argument("-o", "--output", default="frames", help="Output directory for frames (default: frames)")
     parser.add_argument("-v", "--video", default="video.mp4", help="Temporary video file path (default: video.mp4)")
     parser.add_argument("--keep-video", action="store_true", help="Keep downloaded video file after extraction")
     parser.add_argument("--threshold", type=float, default=0.95, help="SSIM similarity threshold, higher=more similar required (default: 0.95)")
     parser.add_argument("--sample-interval", type=float, default=1.5, help="Sample interval in seconds (default: 1.5). Use 0 to process every frame")
+    parser.add_argument("--start-time", type=float, help="Start time in seconds")
+    parser.add_argument("--end-time", type=float, help="End time in seconds")
     parser.add_argument("--pdf", action="store_true", help="Create a PDF from extracted frames")
     parser.add_argument("--pdf-output", default="output.pdf", help="PDF output filename (default: output.pdf)")
     parser.add_argument("--orientation", choices=["portrait", "landscape"], default="portrait", help="PDF page orientation (default: portrait)")
+    parser.add_argument("--edit", action="store_true", help="Launch graphical editor to reorder/delete frames")
 
     args = parser.parse_args()
+
+    if args.edit:
+        from frame_editor import launch_editor
+        launch_editor(args.output)
+        return
+
+    if not args.url:
+        parser.error("URL is required unless using --edit")
 
     print(f"Downloading video from: {args.url}")
     video_path = download_video(args.url, args.video)
@@ -201,7 +222,7 @@ def main():
     sample_interval = None if args.sample_interval == 0 else args.sample_interval
 
     print(f"\nExtracting unique frames to: {args.output}")
-    extract_unique_frames(video_path, args.output, args.threshold, sample_interval)
+    extract_unique_frames(video_path, args.output, args.threshold, sample_interval, args.start_time, args.end_time)
 
     if args.pdf:
         print(f"\nCreating PDF with {args.orientation} orientation...")

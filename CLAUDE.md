@@ -34,10 +34,13 @@ uv run scraper.py URL --keep-video              # Keep downloaded video file
 uv run scraper.py URL --threshold 0.95          # SSIM similarity threshold (default: 0.95)
 uv run scraper.py URL --sample-interval 1.5     # Sample interval in seconds (default: 1.5)
 uv run scraper.py URL --sample-interval 0       # Process every frame (slower but thorough)
+uv run scraper.py URL --start-time 120          # Start extraction at 2 minutes
+uv run scraper.py URL --end-time 300            # End extraction at 5 minutes
 uv run scraper.py URL -v temp.mp4               # Specify temporary video filename
 uv run scraper.py URL --pdf                     # Create PDF from extracted frames
 uv run scraper.py URL --pdf-output sheet.pdf    # Specify PDF output filename
 uv run scraper.py URL --orientation landscape   # Set PDF orientation (portrait or landscape)
+uv run scraper.py --edit                        # Launch GUI to reorder/delete frames
 ```
 
 ## Architecture
