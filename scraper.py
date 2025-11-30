@@ -161,7 +161,7 @@ def create_pdf(frames_dir, output_pdf, orientation="portrait", page_breaks=None)
     # Get manual page break boundaries
     manual_breaks = sorted(list(page_break_set))
     section_starts = [0] + [b + 1 for b in manual_breaks]
-    section_ends = manual_breaks + [len(images)]
+    section_ends = [b + 1 for b in manual_breaks] + [len(images)]
 
     for section_idx in range(len(section_starts)):
         section_start = section_starts[section_idx]
