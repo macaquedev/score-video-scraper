@@ -8,3 +8,5 @@ __pycache__/
 venv/
 *.egg-info/
 .python-version
+node_modules/
+package-lock.json
