@@ -140,12 +140,12 @@ ipcMain.handle('save-frames', async (event, frames) => {
         reject(err);
       });
 
-      // Add timeout
+      // Add timeout (5 minutes)
       setTimeout(() => {
-        console.log('Python process timeout after 30s');
+        console.log('Python process timeout after 5 minutes');
         child.kill();
-        reject(new Error('PDF generation timed out after 30 seconds'));
-      }, 30000);
+        reject(new Error('PDF generation timed out after 5 minutes'));
+      }, 300000);
     });
   } catch (err) {
     console.error('Save operation failed:', err);
