@@ -60,13 +60,17 @@ ipcMain.handle('save-frames', async (event, frames) => {
   const framesDir = path.join(process.cwd(), 'frames');
   const tempDir = path.join(framesDir, 'temp_rename');
 
+  console.log('Starting save operation with', frames.length, 'frames');
+
   try {
     // Create temp directory
+    console.log('Creating temp directory...');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
     // Copy files with new names
+    console.log('Copying files...');
     frames.forEach((frame, idx) => {
       const oldPath = path.join(framesDir, frame.name);
       const newName = `frame_${String(idx).padStart(6, '0')}.png`;
@@ -75,6 +79,7 @@ ipcMain.handle('save-frames', async (event, frames) => {
     });
 
     // Remove old files
+    console.log('Removing old files...');
     const oldFiles = fs.readdirSync(framesDir)
       .filter(f => f.startsWith('frame_') && f.endsWith('.png'));
     oldFiles.forEach(f => {
@@ -82,6 +87,7 @@ ipcMain.handle('save-frames', async (event, frames) => {
     });
 
     // Move new files back
+    console.log('Moving new files back...');
     const newFiles = fs.readdirSync(tempDir);
     newFiles.forEach(f => {
       fs.renameSync(
@@ -91,11 +97,15 @@ ipcMain.handle('save-frames', async (event, frames) => {
     });
 
     // Remove temp directory
+    console.log('Removing temp directory...');
     fs.rmdirSync(tempDir);
 
     // Generate PDF using Python
+    console.log('Generating PDF...');
     return new Promise((resolve, reject) => {
       const pythonCode = `from scraper import create_pdf; create_pdf('frames', 'output.pdf', 'portrait'); print('PDF created successfully')`;
+      console.log('Spawning Python process:', 'uv run python -c', pythonCode.substring(0, 50) + '...');
+
       const child = spawn('uv', ['run', 'python', '-c', pythonCode], {
         cwd: process.cwd(),
         stdio: 'pipe'
@@ -105,26 +115,40 @@ ipcMain.handle('save-frames', async (event, frames) => {
       let errorOutput = '';
 
       child.stdout.on('data', (data) => {
-        output += data.toString();
+        const str = data.toString();
+        console.log('Python stdout:', str);
+        output += str;
       });
 
       child.stderr.on('data', (data) => {
-        errorOutput += data.toString();
+        const str = data.toString();
+        console.log('Python stderr:', str);
+        errorOutput += str;
       });
 
       child.on('close', (code) => {
+        console.log('Python process closed with code', code);
         if (code === 0) {
           resolve({ success: true, message: `PDF created with ${frames.length} frames` });
         } else {
-          reject(new Error(`Python script failed: ${errorOutput}`));
+          reject(new Error(`Python script failed (code ${code}): ${errorOutput}`));
         }
       });
 
       child.on('error', (err) => {
+        console.error('Python process error:', err);
         reject(err);
       });
+
+      // Add timeout
+      setTimeout(() => {
+        console.log('Python process timeout after 30s');
+        child.kill();
+        reject(new Error('PDF generation timed out after 30 seconds'));
+      }, 30000);
     });
   } catch (err) {
+    console.error('Save operation failed:', err);
     throw new Error(`Failed to save: ${err.message}`);
   }
 });

@@ -155,14 +155,24 @@ function setupEventListeners() {
   // Save & Create PDF
   document.getElementById('save-btn').addEventListener('click', async () => {
     try {
-      showLoading(true);
+      showLoading(true, 'Preparing frames...', 10);
+
+      // Simulate progress for user feedback
+      setTimeout(() => showLoading(true, 'Renaming files...', 30), 500);
+      setTimeout(() => showLoading(true, 'Generating PDF...', 50), 1000);
+      setTimeout(() => showLoading(true, 'Creating pages...', 70), 2000);
+      setTimeout(() => showLoading(true, 'Finalizing...', 90), 3000);
+
       const result = await window.electronAPI.saveFrames(frames);
-      alert(result.message);
-      window.close();
+
+      showLoading(true, 'Complete!', 100);
+      setTimeout(() => {
+        alert(result.message);
+        window.close();
+      }, 500);
     } catch (err) {
-      alert(`Failed to save: ${err.message}`);
-    } finally {
       showLoading(false);
+      alert(`Failed to save: ${err.message}`);
     }
   });
 
@@ -245,7 +255,17 @@ function scrollToFrame(index) {
   }
 }
 
-function showLoading(show) {
+function showLoading(show, message = 'Processing...', progress = 0) {
   const loading = document.getElementById('loading');
+  const messageEl = document.getElementById('loading-message');
+  const progressBar = document.getElementById('progress-bar');
+  const detailEl = document.getElementById('loading-detail');
+
   loading.classList.toggle('hidden', !show);
+
+  if (show) {
+    messageEl.textContent = message;
+    progressBar.style.width = `${progress}%`;
+    detailEl.textContent = `${progress}%`;
+  }
 }
