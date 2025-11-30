@@ -107,11 +107,19 @@ class FrameEditor:
     def delete_frame(self):
         if self.selected_index is None:
             return
-        
-        if messagebox.askyesno("Confirm Delete", f"Delete frame {self.selected_index}?"):
-            self.frames.pop(self.selected_index)
-            self.selected_index = None
-            self.load_thumbnails()
+
+        self.frames.pop(self.selected_index)
+        widgets = self.frame_container.winfo_children()
+        widgets[self.selected_index].destroy()
+        self.thumbnails.pop(self.selected_index)
+        self.selected_index = None
+
+        for i, widget in enumerate(self.frame_container.winfo_children()):
+            for child in widget.winfo_children():
+                if isinstance(child, tk.Frame):
+                    for label in child.winfo_children():
+                        if isinstance(label, tk.Label) and "Frame" in label.cget("text"):
+                            label.config(text=f"Frame {i}")
             
     def save_and_exit(self):
         if messagebox.askyesno("Save Changes", "Save changes and rename files?"):
