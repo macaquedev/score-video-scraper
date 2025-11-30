@@ -21,7 +21,13 @@ class FrameEditor:
 
         self.setup_ui()
         self.load_thumbnails()
-        
+        self.setup_keybindings()
+
+    def setup_keybindings(self):
+        self.root.bind("<Up>", lambda e: self.navigate_up(e))
+        self.root.bind("<Down>", lambda e: self.navigate_down(e))
+        self.root.bind("<Delete>", lambda e: self.delete_frame())
+
     def setup_ui(self):
         toolbar = tk.Frame(self.root)
         toolbar.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
@@ -105,7 +111,73 @@ class FrameEditor:
                 frame.configure(bg="blue", highlightbackground="blue", highlightthickness=3)
             else:
                 frame.configure(bg="lightgray", highlightthickness=0)
-                
+
+    def navigate_up(self, event):
+        if not self.frames:
+            return
+
+        if not self.selected_indices:
+            # No selection, start at the end
+            target = len(self.frames) - 1
+        else:
+            # Move from the minimum selected index
+            target = min(self.selected_indices) - 1
+            if target < 0:
+                return
+
+        # Check for Shift key for range selection
+        if event.state & 0x1 and self.last_clicked is not None:
+            start = min(self.last_clicked, target)
+            end = max(self.last_clicked, target)
+            self.selected_indices = set(range(start, end + 1))
+        else:
+            self.selected_indices = {target}
+            self.last_clicked = target
+
+        self.select_frame(target)
+        self.scroll_to_frame(target)
+
+    def navigate_down(self, event):
+        if not self.frames:
+            return
+
+        if not self.selected_indices:
+            # No selection, start at the beginning
+            target = 0
+        else:
+            # Move from the maximum selected index
+            target = max(self.selected_indices) + 1
+            if target >= len(self.frames):
+                return
+
+        # Check for Shift key for range selection
+        if event.state & 0x1 and self.last_clicked is not None:
+            start = min(self.last_clicked, target)
+            end = max(self.last_clicked, target)
+            self.selected_indices = set(range(start, end + 1))
+        else:
+            self.selected_indices = {target}
+            self.last_clicked = target
+
+        self.select_frame(target)
+        self.scroll_to_frame(target)
+
+    def scroll_to_frame(self, index):
+        widgets = self.frame_container.winfo_children()
+        if 0 <= index < len(widgets):
+            widget = widgets[index]
+            self.canvas.update_idletasks()
+            bbox = self.canvas.bbox("all")
+            if bbox:
+                widget_y = widget.winfo_y()
+                widget_height = widget.winfo_height()
+                canvas_height = self.canvas.winfo_height()
+
+                # Calculate scroll position to center the widget
+                scroll_pos = (widget_y - canvas_height / 2 + widget_height / 2) / bbox[3]
+                scroll_pos = max(0, min(1, scroll_pos))
+                self.canvas.yview_moveto(scroll_pos)
+
     def move_up(self):
         if len(self.selected_indices) != 1:
             return
