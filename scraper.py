@@ -2,6 +2,7 @@
 import argparse
 import os
 import sys
+import shutil
 import cv2
 import numpy as np
 import yt_dlp
@@ -122,7 +123,11 @@ def extract_unique_frames(video_path, output_dir, threshold=0.95, sample_interva
     print(f"\nDone! Saved {saved_count} unique frames out of {frame_count - start_frame} processed frames")
 
 
-def create_pdf(frames_dir, output_pdf, orientation="portrait", page_breaks=None):
+def create_pdf(frames_dir, output_pdf, orientation="portrait", page_breaks=None, crop=None, preview_only=False):
+    import tempfile
+    import os as os_module
+    import shutil
+
     frames_path = Path(frames_dir)
     image_files = sorted(frames_path.glob("*.png"))
 
@@ -132,126 +137,142 @@ def create_pdf(frames_dir, output_pdf, orientation="portrait", page_breaks=None)
 
     print(f"Creating PDF with {len(image_files)} frames...")
 
-    # Convert page_breaks to a set of indices for quick lookup
-    page_break_set = set(page_breaks) if page_breaks else set()
+    # Determine if we need to crop
+    needs_crop = crop and (crop.get('top', 0) > 0 or crop.get('bottom', 0) > 0 or crop.get('left', 0) > 0 or crop.get('right', 0) > 0)
 
-    if orientation == "portrait":
-        page_width, page_height = A4
-    else:
-        page_height, page_width = A4
+    # Create temp directory for processing
+    temp_dir = tempfile.mkdtemp(prefix='pdf_gen_')
+    print(f"Using temp directory: {temp_dir}")
 
-    margin_scale = 0.95
-    spacing = 10
+    try:
+        # Process all images: crop if needed and save to temp directory
+        print("Processing images...")
+        processed_images = []
 
-    c = canvas.Canvas(output_pdf, pagesize=(page_width, page_height))
+        for idx, img_path in enumerate(image_files):
+            if idx % 10 == 0:
+                print(f"Processing image {idx + 1}/{len(image_files)}...")
 
-    # Pre-load all images to avoid re-opening them
-    print("Loading images...")
-    images = []
-    for idx, img_path in enumerate(image_files):
-        if idx % 10 == 0:
-            print(f"Loading image {idx + 1}/{len(image_files)}...")
-        img = Image.open(img_path)
-        images.append((img_path, img.size[0], img.size[1]))
+            img = Image.open(img_path)
 
-    print("Generating PDF pages...")
-    i = 0
-    page_num = 0
+            # Apply crop if needed
+            if needs_crop:
+                width, height = img.size
+                left = crop.get('left', 0)
+                top = crop.get('top', 0)
+                right = width - crop.get('right', 0)
+                bottom = height - crop.get('bottom', 0)
 
-    # Get manual page break boundaries
-    manual_breaks = sorted(list(page_break_set))
-    section_starts = [0] + [b + 1 for b in manual_breaks]
-    section_ends = [b + 1 for b in manual_breaks] + [len(images)]
+                if idx == 0:
+                    print(f"Cropping: ({left}, {top}, {right}, {bottom}) from {(width, height)}")
 
-    for section_idx in range(len(section_starts)):
-        section_start = section_starts[section_idx]
-        section_end = section_ends[section_idx]
+                img = img.crop((left, top, right, bottom))
 
-        # Calculate section stats
-        section_images = images[section_start:section_end]
+                if idx == 0:
+                    print(f"Result: {img.size}")
 
-        # Pre-calculate scaled dimensions for all images in this section
-        scaled_section_images = []
-        for img_path, img_width, img_height in section_images:
-            scaled_width = img_width * margin_scale
-            scaled_height = img_height * margin_scale
+                # Save back to original if not preview
+                if not preview_only:
+                    img.save(str(img_path), 'PNG')
 
-            max_width = page_width * 0.9
-            if scaled_width > max_width:
-                scale_factor = max_width / scaled_width
-                scaled_width = max_width
-                scaled_height = scaled_height * scale_factor
+            # Save processed image to temp directory
+            temp_img_path = os_module.path.join(temp_dir, f"img_{idx:06d}.png")
+            img.save(temp_img_path, 'PNG')
+            processed_images.append((temp_img_path, img.size[0], img.size[1]))
+            img.close()
 
-            scaled_section_images.append((img_path, scaled_width, scaled_height))
+        # Convert page_breaks to a set
+        page_break_set = set(page_breaks) if page_breaks else set()
 
-        total_section_height = sum(h for _, _, h in scaled_section_images) + (len(scaled_section_images) - 1) * spacing
-        available_height = page_height * 0.9
-        estimated_pages = max(1, int(np.ceil(total_section_height / available_height)))
-        target_height_per_page = total_section_height / estimated_pages
+        if orientation == "portrait":
+            page_width, page_height = A4
+        else:
+            page_height, page_width = A4
 
-        print(f"Section {section_idx + 1}: frames {section_start}-{section_end-1}, {estimated_pages} pages, target {target_height_per_page:.0f}px per page")
+        c = canvas.Canvas(output_pdf, pagesize=(page_width, page_height))
 
-        # Find optimal break points to evenly distribute content
-        break_points = [0]  # Start of section
-        current_page_height = 0
+        # Generate PDF pages - fit as many images as possible per page
+        print("Generating PDF pages...")
 
-        for idx, (img_path, img_width, img_height) in enumerate(scaled_section_images):
-            needed_height = img_height
-            if current_page_height > 0:
-                needed_height += spacing
+        # Get manual page break boundaries
+        manual_breaks = sorted(list(page_break_set))
+        section_starts = [0] + [b + 1 for b in manual_breaks]
+        section_ends = [b + 1 for b in manual_breaks] + [len(processed_images)]
 
-            # Check if adding this would put us significantly over target
-            if current_page_height > 0 and current_page_height + needed_height > target_height_per_page:
-                # Calculate how close we are to target with and without this image
-                distance_without = abs(current_page_height - target_height_per_page)
-                distance_with = abs(current_page_height + needed_height - target_height_per_page)
+        page_num = 0
+        max_width = page_width * 0.9
+        max_height = page_height * 0.9
 
-                # Only break if it's closer to target without this image
-                # AND we're not creating a tiny last page
-                frames_remaining = len(scaled_section_images) - idx
-                if frames_remaining > 0:
-                    remaining_height = sum(h for _, _, h in scaled_section_images[idx:]) + (frames_remaining - 1) * spacing
+        for section_idx in range(len(section_starts)):
+            section_start = section_starts[section_idx]
+            section_end = section_ends[section_idx]
 
-                    # Break here if it's closer to target and won't leave a tiny last page
-                    if distance_without < distance_with and remaining_height > target_height_per_page * 0.5:
-                        break_points.append(idx)
-                        current_page_height = needed_height
-                        continue
+            # Get images for this section
+            section_images = processed_images[section_start:section_end]
 
-            current_page_height += needed_height
+            print(f"Section {section_idx + 1}: frames {section_start}-{section_end-1}")
 
-        # Render pages based on break points
-        for page_idx in range(len(break_points)):
-            start_idx = break_points[page_idx]
-            end_idx = break_points[page_idx + 1] if page_idx + 1 < len(break_points) else len(scaled_section_images)
+            # Pack images into pages, fitting as many as possible
+            idx = 0
+            while idx < len(section_images):
+                page_images = []
+                current_height = 0
 
-            page_images = scaled_section_images[start_idx:end_idx]
+                # Add images to current page until we run out of space
+                while idx < len(section_images):
+                    img_path, img_width, img_height = section_images[idx]
 
-            if not page_images:
-                continue
+                    # Scale to fit page width
+                    scale = min(1.0, max_width / img_width)
+                    scaled_width = img_width * scale
+                    scaled_height = img_height * scale
 
-            # Calculate total height for this page
-            total_page_height = sum(h for _, _, h in page_images) + (len(page_images) - 1) * spacing
+                    # Check if this image fits on current page
+                    if current_height + scaled_height <= max_height:
+                        page_images.append((img_path, scaled_width, scaled_height))
+                        current_height += scaled_height
+                        idx += 1
+                    else:
+                        break
 
-            page_num += 1
-            print(f"Creating page {page_num} with {len(page_images)} frames ({total_page_height:.0f}px)...")
+                # If we couldn't fit any images, force add one (image too tall for page)
+                if not page_images and idx < len(section_images):
+                    img_path, img_width, img_height = section_images[idx]
+                    scale = min(max_width / img_width, max_height / img_height)
+                    scaled_width = img_width * scale
+                    scaled_height = img_height * scale
+                    page_images.append((img_path, scaled_width, scaled_height))
+                    idx += 1
 
-            y_offset = (page_height - total_page_height) / 2
+                # Render page
+                if page_images:
+                    page_num += 1
+                    total_height = sum(h for _, _, h in page_images)
+                    print(f"Creating page {page_num} with {len(page_images)} frames")
 
-            for img_path, img_width, img_height in page_images:
-                x_offset = (page_width - img_width) / 2
-                y_position = page_height - y_offset - img_height
+                    y_offset = (page_height - total_height) / 2
 
-                c.drawImage(str(img_path), x_offset, y_position,
-                           width=img_width, height=img_height)
+                    for img_path, img_width, img_height in page_images:
+                        x_offset = (page_width - img_width) / 2
+                        y_position = page_height - y_offset - img_height
 
-                y_offset += img_height + spacing
+                        c.drawImage(img_path, x_offset, y_position, width=img_width, height=img_height)
 
-            c.showPage()
+                        y_offset += img_height
 
-    print("Saving PDF...")
-    c.save()
-    print(f"PDF created: {output_pdf}")
+                    c.showPage()
+
+        print("Saving PDF...")
+        c.save()
+        print(f"PDF created: {output_pdf}")
+
+    finally:
+        # Clean up temp directory
+        print("Cleaning up temp files...")
+        try:
+            shutil.rmtree(temp_dir)
+        except Exception as e:
+            print(f"Warning: Could not remove temp directory: {e}")
 
 
 def main():
@@ -272,12 +293,20 @@ def main():
     args = parser.parse_args()
 
     if args.edit:
-        from frame_editor import launch_editor
-        launch_editor(args.output)
+        print("Please use 'bun dev' or 'npm run dev' to launch the frame editor.")
         return
 
     if not args.url:
         parser.error("URL is required unless using --edit")
+
+    if os.path.exists(args.output):
+        response = input(f"Directory '{args.output}' already exists. Delete it? (y/n): ").strip().lower()
+        if response == 'y' or response == 'yes':
+            shutil.rmtree(args.output)
+            print(f"Deleted directory: {args.output}")
+        else:
+            print("Exiting...")
+            sys.exit(0)
 
     print(f"Downloading video from: {args.url}")
     video_path = download_video(args.url, args.video)

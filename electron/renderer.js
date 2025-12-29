@@ -1,6 +1,7 @@
 let frames = [];
 let selectedIndices = new Set();
 let lastClicked = null;
+let cropValues = { top: 0, bottom: 0, left: 0, right: 0 };
 
 // Load frames on startup
 document.addEventListener('DOMContentLoaded', async () => {
@@ -43,10 +44,12 @@ function renderFrames() {
     const pageBreakBadge = frame.pageBreak ?
       '<span class="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-xs font-medium">📄 Page Break After</span>' : '';
 
+    const cropStyle = getCropStyle();
+
     card.innerHTML = `
       <div class="flex items-start gap-6">
-        <div class="flex-shrink-0">
-          <img src="file://${frame.path}" alt="Frame ${index}" class="thumbnail rounded-lg">
+        <div class="flex-shrink-0 thumbnail-container">
+          <img src="file://${frame.path}" alt="Frame ${index}" class="thumbnail rounded-lg" style="${cropStyle}">
         </div>
         <div class="flex-1 min-w-0">
           <h3 class="text-xl font-bold text-white mb-2">Frame ${index}</h3>
@@ -78,6 +81,23 @@ function renderFrames() {
   });
 
   updateSelection();
+}
+
+function getCropStyle() {
+  const { top, bottom, left, right } = cropValues;
+  if (top === 0 && bottom === 0 && left === 0 && right === 0) {
+    return '';
+  }
+
+  return `clip-path: inset(${top}px ${right}px ${bottom}px ${left}px);`;
+}
+
+function applyCropPreview() {
+  const thumbnails = document.querySelectorAll('.thumbnail');
+  const cropStyle = getCropStyle();
+  thumbnails.forEach(img => {
+    img.style.clipPath = cropStyle ? `inset(${cropValues.top}px ${cropValues.right}px ${cropValues.bottom}px ${cropValues.left}px)` : '';
+  });
 }
 
 function handleFrameClick(index, event) {
@@ -198,7 +218,7 @@ function setupEventListeners() {
     try {
       showLoading(true, 'Saving frames and generating PDF...', null);
 
-      const result = await window.electronAPI.saveFrames(frames);
+      const result = await window.electronAPI.saveFrames(frames, cropValues);
 
       showLoading(false);
       alert(result.message);
@@ -207,6 +227,54 @@ function setupEventListeners() {
       showLoading(false);
       alert(`Failed to save: ${err.message}`);
     }
+  });
+
+  // Preview PDF
+  document.getElementById('preview-pdf-btn').addEventListener('click', async () => {
+    try {
+      console.log('Generating preview with crop values:', cropValues);
+      showLoading(true, 'Generating PDF preview...', null);
+
+      const result = await window.electronAPI.previewPdf(frames, cropValues);
+
+      showLoading(false);
+      if (result.success) {
+        alert('Preview PDF opened in your default viewer');
+      }
+    } catch (err) {
+      showLoading(false);
+      alert(`Failed to generate preview: ${err.message}`);
+    }
+  });
+
+  // Toggle Crop Panel
+  document.getElementById('toggle-crop-btn').addEventListener('click', () => {
+    const panel = document.getElementById('crop-panel');
+    panel.classList.toggle('hidden');
+  });
+
+  // Crop Sliders
+  const cropInputs = ['top', 'bottom', 'left', 'right'];
+  cropInputs.forEach(side => {
+    const slider = document.getElementById(`crop-${side}`);
+    const valueDisplay = document.getElementById(`crop-${side}-value`);
+
+    slider.addEventListener('input', (e) => {
+      const value = parseInt(e.target.value);
+      cropValues[side] = value;
+      valueDisplay.textContent = value;
+      applyCropPreview();
+    });
+  });
+
+  // Reset Crop
+  document.getElementById('reset-crop-btn').addEventListener('click', () => {
+    cropValues = { top: 0, bottom: 0, left: 0, right: 0 };
+    cropInputs.forEach(side => {
+      document.getElementById(`crop-${side}`).value = 0;
+      document.getElementById(`crop-${side}-value`).textContent = 0;
+    });
+    applyCropPreview();
   });
 
   // Keyboard shortcuts

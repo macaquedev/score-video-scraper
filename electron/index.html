@@ -38,6 +38,37 @@
     ::-webkit-scrollbar-thumb:hover {
       background: #64748b;
     }
+    .slider::-webkit-slider-thumb {
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #3b82f6;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .slider::-webkit-slider-thumb:hover {
+      background: #2563eb;
+      transform: scale(1.1);
+    }
+    .slider::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #3b82f6;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+    .slider::-moz-range-thumb:hover {
+      background: #2563eb;
+      transform: scale(1.1);
+    }
+    .thumbnail-container {
+      overflow: hidden;
+      position: relative;
+      display: inline-block;
+    }
   </style>
 </head>
 <body class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white min-h-screen">
@@ -83,11 +114,52 @@
           Toggle Page Break
         </button>
 
+        <button id="toggle-crop-btn" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded-lg font-medium transition flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z"></path>
+          </svg>
+          Crop
+        </button>
+
         <button id="save-btn" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition flex items-center gap-2">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
           </svg>
           Save & Create PDF
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Crop Panel -->
+  <div id="crop-panel" class="bg-slate-800/95 backdrop-blur-lg border-b border-slate-700 p-6 sticky top-[73px] z-10 hidden">
+    <div class="container mx-auto">
+      <h2 class="text-lg font-bold text-white mb-4">Crop Settings</h2>
+      <div class="grid grid-cols-2 gap-6 mb-6">
+        <div>
+          <label class="text-sm text-slate-300 mb-2 block">Crop Top: <span id="crop-top-value" class="text-blue-400 font-mono">0</span>px</label>
+          <input type="range" id="crop-top" min="0" max="500" value="0" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer slider">
+        </div>
+        <div>
+          <label class="text-sm text-slate-300 mb-2 block">Crop Bottom: <span id="crop-bottom-value" class="text-blue-400 font-mono">0</span>px</label>
+          <input type="range" id="crop-bottom" min="0" max="500" value="0" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer slider">
+        </div>
+        <div>
+          <label class="text-sm text-slate-300 mb-2 block">Crop Left: <span id="crop-left-value" class="text-blue-400 font-mono">0</span>px</label>
+          <input type="range" id="crop-left" min="0" max="500" value="0" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer slider">
+        </div>
+        <div>
+          <label class="text-sm text-slate-300 mb-2 block">Crop Right: <span id="crop-right-value" class="text-blue-400 font-mono">0</span>px</label>
+          <input type="range" id="crop-right" min="0" max="500" value="0" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer slider">
+        </div>
+      </div>
+
+      <div class="flex gap-3 mt-4">
+        <button id="reset-crop-btn" class="px-4 py-2 bg-slate-600 hover:bg-slate-700 rounded-lg font-medium transition text-sm">
+          Reset All
+        </button>
+        <button id="preview-pdf-btn" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg font-medium transition text-sm">
+          Preview PDF
         </button>
       </div>
     </div>
